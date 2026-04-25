@@ -1,9 +1,11 @@
+# Based off 3blue1brown wordle bot
 # Average turns: 4.394290123456754
 
 import sys
 import math
 import time
 
+# Turning color strings into list of numbers so it's easier for the solver
 colors = ["R", "O", "Y", "G", "B", "P"]
 colorsToNumbers = {"R":0, "O":1, "Y":2, "G":3, "B":4, "P":5}
 numbersToColors = {0:"R", 1:"O", 2:"Y", 3:"G", 4:"B", 5:"P"}
@@ -22,7 +24,7 @@ for num in range(1296):
 # Amount of possible codes left
 remainingCodes = possibleCodes.copy()
 
-# Hash map of each possible code to get faster responses
+# Compute hash map of each possible code to save time while calculuating a move
 possibleCodesHash = []
 for code in possibleCodes:
     hashMap = {}
@@ -61,6 +63,7 @@ def clearLines(lines: int):
 def blankLines(lines: int):
     print("\n" * lines)
 
+# Turn code list into a colored string in the terminal
 def colorCode(code):
     colorCode = " "
     for color in code:
@@ -70,29 +73,36 @@ def colorCode(code):
             colorCode += colorKey[color]+" "
     return colorCode
 
+# Turn response list into a colored string in the terminal
 def colorResponse(response: str):
     coloredResponse = " "
     for color in response:
         coloredResponse += responseKey[color]+" "
     return coloredResponse
 
+# Getting code list value in base 6
 def baseSix(number: list):
     return 216*number[0] + 36*number[1] + 6*number[2] + number[3]
 
+# Getting response list value in base 3 
 def baseThree(number: list):
     return 27*number[0] + 9*number[1] + 3*number[2] + number[3]
 
+# Turn a probability into bits of information for easier handling
 def getBits(probability: float):
     if (probability == 0):
         return 0
     return math.log2(1/probability)
 
+# Gets the code the use inputs
 def getUserCode():
     global stringCode
 
     stringCode = ""
     validCode = False
 
+    # Checks if code has valid color symbols and has a length of four
+    # If not make the user keep inputing a code untill it's valid
     while not validCode:
         validCode = True
         stringCode = input("Enter Code: ").strip().upper()
@@ -103,12 +113,16 @@ def getUserCode():
                 validCode = False
         clearLines(1)
     
+    # Turn userinput into a 
     for color in stringCode:
         numberCode.append(colorsToNumbers[color])
 
 # Return feedback given a code and a guess
 def getFeedback(code:list, possibleMatch:list):
     response = []
+
+    # Since each code is different they all have different values in base 6
+    # Those base6 values are the indexes for the hashmap of that code
     codeHash = possibleCodesHash[baseSix(code)].copy()
     
     for i in range(len(code)):
@@ -136,20 +150,25 @@ def computerGuess():
         meanInformation = 0
 
         for response in remainingCodes:
+            # Each response has a different base 3 value so that can be used asa an index
+            # A list of how many remainingCodes would give a certain feedback pattern for each pattern
             feedbackDistribution[baseThree(getFeedback(guess,response))] += 1
 
         for feedback in feedbackDistribution:
             meanInformation += feedback/len(remainingCodes) * getBits(feedback/len(remainingCodes))
         
+        # Add bias to guesses that could be the answer
         if guess in remainingCodes:
             meanInformation += 1/len(remainingCodes)
         
+        # Store the guess that provides the msot information
         if meanInformation > maxInformation:
             bestGuess = guess
             maxInformation = meanInformation
     
     return bestGuess
     
+# Update reminingCodes to codes that could still be the answer
 def filterRemainingCodes(guess: list, feedback: list):
     global remainingCodes
 
@@ -160,6 +179,7 @@ def filterRemainingCodes(guess: list, feedback: list):
     
     remainingCodes = newRemainingCodes
 
+# main function to take user input and let computer solve it
 def playGame():
     print(f"Red: {red} \nOrange: {orange} \nYellow: {yellow} \nGreen: {green} \nBlue: {blue} \nPurple: {purple} \n")
     getUserCode()
@@ -204,9 +224,11 @@ def resetGame():
 
     playGame()
 
+# Run through all possible codes and record amoutn of turns needed for each one
 def simulate():
-    averageTries = 0
+    # Store first guess since it takes the most time to compute and it won't change
     firstGuess = computerGuess()
+    averageTries = 0
 
     for code in possibleCodes:
         tries = 0
@@ -239,5 +261,4 @@ if __name__ == "__main__":
     playGame()
 
     # averageTries = simulate()
-    # blankLines(2)
     # print(averageTries)
