@@ -1,5 +1,11 @@
 # Based off 3blue1brown wordle bot
-# Average turns: 4.394290123456754
+
+# Average Turns based for each version
+# no bias: 4.685185185185183
+# actualCodeBias=1: 4.394290123456754
+# actualCodeBias=4 average turns: 4.356481481481449
+# sqrt(P(actualCode)): 4.364197530864163
+# minimum score given entropy and P(actualCode): 4.360339506172806
 
 import sys
 import math
@@ -54,6 +60,11 @@ stringCode = ""
 numberCode = []
 cracked = False
 
+# Average number of turns to solve the code after a certain amount of entropy
+# entropyToTurns = {10.34: 4.6852, 4.17: 2.7698412698412698, 2.58: 2.2450980392156863, 0.0: 1.0, 3.0: 2.35, 1.58: 2.0852713178294575, 6.29: 3.3974358974358974, 3.32: 2.525, 1.0: 2.0, 3.58: 2.6875, 2.0: 2.1, 5.75: 3.175925925925926, 3.17: 2.2666666666666666, 6.98: 3.6587301587301586, 3.7: 2.5384615384615383, 4.81: 2.9523809523809526, 7.99: 3.9645669291338583, 5.88: 3.135593220338983, 4.64: 3.0, 2.81: 2.2857142857142856, 2.32: 2.2454545454545456, 3.91: 2.4, 6.75: 3.509259259259259, 4.09: 2.588235294117647, 4.32: 2.725, 4.25: 2.9210526315789473, 5.13: 3.1714285714285713, 5.46: 3.159090909090909, 7.79: 3.779279279279279, 5.64: 3.1, 4.39: 2.761904761904762, 4.0: 2.75, 8.11: 3.9057971014492754, 5.29: 2.9743589743589745, 3.81: 2.5, 4.91: 2.9, 5.25: 2.9210526315789473, 5.39: 3.0238095238095237, 4.75: 2.888888888888889, 6.34: 3.6419753086419755, 3.46: 2.5454545454545454}
+# Equation: Turns = 0.0066(Entropy)^2 + 0.2306(Entropy) + 1.6453
+def entropyToTurns(entropy: float):
+    return 0.0066*entropy**2 + 0.2306*entropy + 1.6453
 
 def clearLines(lines: int):
     for line in range(lines):
@@ -142,12 +153,18 @@ def getFeedback(code:list, possibleMatch:list):
 # Goes through all the possible feedback patterns for each guess and calculates the average information gained
 def computerGuess():
     bestGuess = [0,0,0,0]
-    maxInformation = 0
+    minScore = 20
+
+    if len(remainingCodes) == 1:
+        return remainingCodes[0]
 
     for guess in possibleCodes:
 
         feedbackDistribution = [0] * 81
         meanInformation = 0
+
+        probability = 1/len(remainingCodes)
+        entropy = getBits(probability)
 
         for response in remainingCodes:
             # Each response has a different base 3 value so that can be used asa an index
@@ -157,14 +174,17 @@ def computerGuess():
         for feedback in feedbackDistribution:
             meanInformation += feedback/len(remainingCodes) * getBits(feedback/len(remainingCodes))
         
-        # Add bias to guesses that could be the answer
+        # Calculate the average score after a guess based on if it could be the code and the amount of information it provides
+        # Higher entropy and probability of being a guess when there's only a few possibilities cause lower score
         if guess in remainingCodes:
-            meanInformation += 1/len(remainingCodes)
+            scoreEstimate = probability + entropyToTurns(entropy-meanInformation)*(1-probability) 
+        else:
+            scoreEstimate = entropyToTurns(entropy-meanInformation)
         
-        # Store the guess that provides the msot information
-        if meanInformation > maxInformation:
+        # Store the guess that gives the lowest average score
+        if scoreEstimate < minScore:
             bestGuess = guess
-            maxInformation = meanInformation
+            minScore = scoreEstimate
     
     return bestGuess
     
@@ -202,7 +222,7 @@ def playGame():
         clearLines(1)
         print(f"|{colorCode(guess)}|   |{colorResponse(feedback)}|")
 
-        # check is code is correct
+        # check if code is correct
         if sum(feedback) >= 8:
             break
 
@@ -246,12 +266,57 @@ def simulate():
 
             if sum(feedback) >= 8:
                 break
+
         print(tries)
 
         averageTries += tries/len(possibleCodes)
         resetSim()
         
     return averageTries
+
+# Returns how many turns on average it takes to solve a code after a certain entropy
+# Used to give bias to guesses that could be the answer in the solver 
+def entropyToAverageScore():
+    firstGuess = computerGuess()
+    entropyToTries = {10.34: 4.6852}
+    entropyCount = {10.34: 1}
+
+    for code in possibleCodes:
+        tries = 0
+        entropyPerTurn = {}
+
+        while True:
+
+            if tries == 0:
+                guess = firstGuess
+            else:
+                guess = computerGuess()
+
+            feedback = getFeedback(code,guess)
+            filterRemainingCodes(guess,feedback)     
+            tries += 1
+
+            if sum(feedback) >= 8:
+                break
+        
+            # Recrods entropy on each turn
+            entropyPerTurn[round(getBits(1/len(remainingCodes)), 2)] = tries
+
+        # Creating dictionary of how long it took to solve the code after each entropy value
+        for entropy in entropyPerTurn.keys():
+            if entropy in entropyCount:
+                entropyCount[entropy] += 1
+                entropyToTries[entropy] += tries-entropyPerTurn[entropy]
+            else: 
+                entropyCount[entropy] = 1
+                entropyToTries[entropy] = tries-entropyPerTurn[entropy]
+
+        resetSim()
+    
+    for entropy in entropyToTries.keys():
+        entropyToTries[entropy] /= entropyCount[entropy]
+        
+    return entropyToTries
     
 def resetSim():
     global remainingCodes
@@ -262,3 +327,6 @@ if __name__ == "__main__":
 
     # averageTries = simulate()
     # print(averageTries)
+
+    # entropyToTurns = entropyToAverageScore()
+    # print(entropyToTurns)
